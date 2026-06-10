@@ -105,12 +105,8 @@ _transport_mode: str = "none"  # "uds", "tcp", or "none"
 
 # Serialization lock for Ghidra HTTP calls — prevents stdout corruption when
 # multiple MCP tool calls arrive concurrently (see GitHub issue #91).
-_ghidra_lock = asyncio.Lock()
-_connected_project: str | None = None  # Project name for auto-reconnect
-
-# Serialization lock for Ghidra HTTP calls — prevents stdout corruption when
-# multiple MCP tool calls arrive concurrently (see GitHub issue #91).
 _ghidra_lock = threading.Lock()
+_connected_project: str | None = None  # Project name for auto-reconnect
 
 
 # ==========================================================================
@@ -2114,6 +2110,119 @@ def debugger_watch_log(watch_id: int = -1, last_n: int = 50) -> str:
         "/debugger/watch/log",
         query={"watch_id": str(watch_id), "last_n": str(last_n)},
     )
+
+
+# ==========================================================================
+# HTTP server (streamable-http / /mcp endpoint)
+# ==========================================================================
+
+_http_server: "uvicorn.Server | None" = None
+_http_server_stop_event: threading.Event | None = None
+
+
+# Register the /health endpoint early (available even before HTTP server starts)
+@mcp.custom_route("/health", methods=["GET"])
+def _health_check() -> dict:
+    """Health check endpoint used by Claude's /mcp connection check.
+
+    Returns the current transport state, Ghidra connection status,
+    and the HTTP server URL if available.
+    """
+    status = {
+        "status": "ok",
+        "transport": _transport_mode,
+        "mcp_path": mcp.settings.streamable_http_path,
+    }
+    if _active_socket:
+        status["socket"] = _active_socket
+    if _active_tcp:
+        status["tcp_url"] = _active_tcp
+    if _connected_project:
+        status["project"] = _connected_project
+
+    # Check Ghidra connectivity
+    if _transport_mode != "none":
+        status["ghidra_connected"] = True
+    else:
+        status["ghidra_connected"] = False
+        if _connected_project:
+            status["note"] = f"Waiting for project '{_connected_project}'"
+        else:
+            status["note"] = "No instance connected. Use connect_instance()"
+
+    return status
+
+
+def start_http_server(
+    host: str = "127.0.0.1",
+    port: int = 8081,
+    path: str | None = None,
+    json_response: bool = True,
+) -> None:
+    """Start the MCP HTTP server on the /mcp endpoint in a background thread.
+
+    This enables Claude (or any MCP client) to POST JSON-RPC messages
+    to http://<host>:<port>/mcp while the bridge continues serving
+    stdio to its primary client.
+
+    The /mcp endpoint implements the full MCP Streamable HTTP protocol:
+    - POST application/json  — send messages, receive responses
+    - GET text/event-stream  — receive SSE notification stream
+    - DELETE                 — terminate the session
+    - MCP-Session-Id header  — session persistence across requests
+    - MCP-Protocol-Version   — protocol version negotiation
+    - Content-Type negotiation for POST (application/json <-> text/event-stream)
+
+    Args:
+        host: Bind address for the HTTP server.
+        port: Port for the HTTP server.
+        path: MCP endpoint path (default: "/mcp").
+        json_response: If True, POST responses return JSON instead of SSE.
+    """
+    global _http_server
+
+    # Configure FastMCP settings for HTTP
+    mcp.settings.host = host
+    mcp.settings.port = port
+    if path is not None:
+        mcp.settings.streamable_http_path = path
+    mcp.settings.json_response = json_response
+
+    # Pre-initialize the session manager so it's ready for requests
+    _ = mcp.streamable_http_app()
+
+    import uvicorn
+
+    config = uvicorn.Config(
+        mcp.streamable_http_app(),
+        host=host,
+        port=port,
+        log_level=mcp.settings.log_level.lower(),
+        access_log=False,
+    )
+    _http_server = uvicorn.Server(config)
+
+    logger.info(f"MCP HTTP server starting on http://{host}:{port}{mcp.settings.streamable_http_path}")
+    asyncio.get_event_loop().run_until_complete(_http_server.serve())
+
+
+def _run_http_server_thread(host: str, port: int, path: str, json_response: bool) -> None:
+    """Run start_http_server() in a background thread."""
+    # Create a new event loop for the HTTP server thread
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        start_http_server(host=host, port=port, path=path, json_response=json_response)
+    finally:
+        loop.close()
+
+
+def stop_http_server() -> None:
+    """Stop the background HTTP server."""
+    global _http_server
+    if _http_server:
+        _http_server.should_exit = True
+        logger.info("MCP HTTP server stopping")
 
 
 # ==========================================================================
