@@ -2289,8 +2289,28 @@ def main():
 
     mcp.settings.log_level = "INFO"
     mcp.settings.host = args.mcp_host
+
+    # Port resolution (prioritized):
+    #   1. --mcp-port CLI arg (highest priority)
+    #   2. GHIDRA_MCP_HTTP_PORT env var
+    #   3. Port in GHIDRA_MCP_HTTP_URL (parsed from URL)
+    #   4. mcp.settings.port default (8000)
     if args.mcp_port:
         mcp.settings.port = args.mcp_port
+    else:
+        http_port = os.environ.get("GHIDRA_MCP_HTTP_PORT")
+        if not http_port:
+            http_url = os.environ.get("GHIDRA_MCP_HTTP_URL", "")
+            if http_url and "://" in http_url:
+                host_part = http_url.split("://", 1)[1]
+                # Remove any path suffix (e.g. "127.0.0.1:9999/mcp" -> "127.0.0.1:9999")
+                if "/" in host_part:
+                    host_part = host_part.split("/", 1)[0]
+                port_part = host_part.split(":")[-1].strip("/")
+                if port_part.isdigit():
+                    http_port = port_part
+        if http_port:
+            mcp.settings.port = int(http_port)
 
     _host = args.mcp_host
     if _host not in {"127.0.0.1", "localhost", "::1"}:
