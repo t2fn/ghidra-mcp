@@ -43,27 +43,27 @@ REQUEST_TIMEOUT = 30
 
 # Per-endpoint timeout overrides for expensive operations
 ENDPOINT_TIMEOUTS = {
-    "rename_variables": 120,
-    "batch_rename_variables": 120,
-    "batch_set_comments": 120,
-    "analyze_function_complete": 120,
-    "batch_rename_function_components": 120,
-    "batch_set_variable_types": 90,
-    "analyze_data_region": 90,
-    "batch_create_labels": 60,
-    "batch_delete_labels": 60,
-    "disassemble_bytes": 120,
-    "bulk_fuzzy_match": 180,
-    "find_similar_functions_fuzzy": 60,
-    "import_file": 300,
-    "run_ghidra_script": 1800,
-    "run_script_inline": 1800,
-    "decompile_function": 45,
-    "set_function_prototype": 45,
-    "rename_function": 45,
-    "rename_function_by_address": 45,
-    "consolidate_duplicate_types": 60,
-    "batch_analyze_completeness": 120,
+    "RenameVariables": 120,
+    "BatchRenameVariables": 120,
+    "BatchSetComments": 120,
+    "AnalyzeFunctionComplete": 120,
+    "BatchRenameFunctionComponents": 120,
+    "BatchSetVariableTypes": 90,
+    "AnalyzeDataRegion": 90,
+    "BatchCreateLabels": 60,
+    "BatchDeleteLabels": 60,
+    "DisassembleBytes": 120,
+    "BulkFuzzyMatch": 180,
+    "FindSimilarFunctionsFuzzy": 60,
+    "ImportFile": 300,
+    "RunGhidraScript": 1800,
+    "RunScriptInline": 1800,
+    "DecompileFunction": 45,
+    "SetFunctionPrototype": 45,
+    "RenameFunction": 45,
+    "RenameFunctionByAddress": 45,
+    "ConsolidateDuplicateTypes": 60,
+    "BatchAnalyzeCompleteness": 120,
     "apply_function_documentation": 60,
     "default": 30,
 }
@@ -620,11 +620,11 @@ def get_timeout(endpoint: str, payload: dict | None = None) -> int:
     if not payload:
         return base
 
-    if name in {"rename_variables", "batch_rename_variables"}:
+    if name in {"RenameVariables", "BatchRenameVariables"}:
         count = len(payload.get("variable_renames", {}))
         return min(base + count * 38, 600)
 
-    if name == "batch_set_comments":
+    if name == "BatchSetComments":
         count = len(payload.get("decompiler_comments", []))
         count += len(payload.get("disassembly_comments", []))
         count += 1 if payload.get("plate_comment") else 0
@@ -658,7 +658,7 @@ def _coerce_comment_entries(value):
 
 
 def _normalize_post_payload(endpoint: str, data: dict) -> dict:
-    if endpoint.strip("/").split("/")[-1] == "batch_set_comments":
+    if endpoint.strip("/").split("/")[-1] == "BatchSetComments":
         data = dict(data)
         for key in ("decompiler_comments", "disassembly_comments"):
             data[key] = _coerce_comment_entries(data.get(key, []))
@@ -921,13 +921,13 @@ def _parse_schema(raw: dict) -> list[dict]:
 
 # Static tool names that should not be overwritten by dynamic registration
 STATIC_TOOL_NAMES = {
-    "list_instances",
+    "ListInstances",
     "connect_instance",
-    "list_tool_groups",
+    "ListToolGroups",
     "load_tool_group",
     "unload_tool_group",
     "check_tools",
-    "import_file",
+    "ImportFile",
     # Debugger tools (Phase 1+2+3)
     "debugger_attach",
     "debugger_detach",

@@ -5,10 +5,11 @@
       "args": [
         "bridge_mcp_ghidra.py",
         "--transport",
-        "stdio"
+        "streamable-http"
       ],
       "env": {
         "GHIDRA_MCP_URL": "http://127.0.0.1:8089",
+        "GHIDRA_MCP_HTTP_URL": "http://127.0.0.1:8081",
         "GHIDRA_DEBUGGER_URL": "http://127.0.0.1:8099",
         "PYTHONIOENCODING": "utf-8"
       }
